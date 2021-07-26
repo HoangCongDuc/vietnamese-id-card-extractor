@@ -2,10 +2,11 @@ numpy==1.19.5
 matplotlib==3.3.4
 opencv-python==4.5.2.52
 PyYAML==5.4.1
-torch==1.8.1+cpu
-torchaudio==0.8.1
-torchvision==0.9.1+cpu
 vietocr==0.3.5
 uvicorn==0.14.0
 fastapi==0.67.0
 python-multipart==0.0.5
+--find-links https://download.pytorch.org/whl/lts/1.8/torch_lts.html
+torch==1.8.1+cpu
+torchaudio==0.8.1
+torchvision==0.9.1+cpu
