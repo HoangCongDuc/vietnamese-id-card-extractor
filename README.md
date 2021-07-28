@@ -24,15 +24,28 @@ Back side methods:
 - Regions of interest: Similar to front side.
 - Text reading: I used pretrained model provided by `vietocr` for text reading and regular expression to post-process some results.
 
-You will need these files to run the code.
+## Installation guide
+To use this library, you need `Python 3.8` installed on your computer (earlier versions may also be used, but I used version 3.8 when I developed this library). Then, you need to install the packages in `requirements.txt`. This can be done with the following command:
+```bash
+pip install -r requirements.txt
+```
+Depending on your system, you may need to replace `pip` with `pip3`. This can be run in a [virtual environment](https://docs.python.org/3/library/venv.html).
+
+Download the following model weight files and place it in the root directory of this repo.
 - [Front side text reader model weight](https://drive.google.com/file/d/14cGUnx7xEs0PHtwEMkDi6XeBvMtCUpJs/view?usp=sharing).
 - [Backside segmentation model weight](https://drive.google.com/file/d/1ErGCbLnnrw2HkUtsvTC_de1WzleP-int/view?usp=sharing).
 - [`vietocr` pretrained model weight, used for back side text reading](https://drive.google.com/file/d/1LzvXrpqmRi_DuOGfoT9fRSa4_ehr0wkm/view?usp=sharing).
 
-## Reference
-1. [Technical report of a similar project from a group of students in VNU University of Engineering and Technology, Hanoi](https://eprints.uet.vnu.edu.vn/eprints/id/eprint/3281/2/technical_report_v1_Cong_Tuan.pdf).
-2. https://alessandroosias.com/automatic-id-card-information-extraction/
-3. [Technical review of FPT card reader](https://fpt.ai/technical-view-fvi-end-end-vietnamese-id-card-ocr)
-4. https://github.com/eragonruan/text-detection-ctpn/tree/banjin-dev
-5. [Real-time information retrieval from Identity cards](https://arxiv.org/pdf/2003.12103.pdf)
-6. https://pbcquoc.github.io/vietocr/
+Now you can use this as a Python library as instructed in the [demo notebook](./demo.ipynb).
+
+You can also run the program as a service on your local machine with the following command:
+```bash
+uvicorn server:app
+```
+By default, the service is hosted on `http://127.0.0.1:8000/`. You can open it with a web browser, upload the image, submit and see the result.
+
+The service can also be access from terminal with `curl`.
+```bash
+curl -F "file=@<path/to/frontside/image>" http://127.0.0.1:8000/front/
+curl -F "file=@<path/to/backside/image>" http://127.0.0.1:8000/back/
+```
