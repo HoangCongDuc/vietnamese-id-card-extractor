@@ -1,6 +1,7 @@
-import json, re
+import re
 import cv2
-import frontside_model
+import numpy as np
+from scipy.ndimage import gaussian_filter1d
 
 from vietocr.tool.predictor import Predictor
 from vietocr.tool.config import Cfg
@@ -8,22 +9,14 @@ from PIL import Image
 
 
 class FrontsideReader:
-    def __init__(self):
-        with open('frontside_reader.config', 'r') as f:
-            config = json.load(f)
-        self.text_reader = frontside_model.Predictor(config['model'], 'frontside_reader.pth')
-    
-    def load_img(self, path):
-        img = cv2.imread(path)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        return img
+    def __init__(self, ocrmodel):
+        self.text_reader = ocrmodel
 
     def _get_text(self, img):
-        new_h = 32
-        h = img.shape[0]
-        img = cv2.resize(img, (0, 0), fx=new_h/h, fy=new_h/h)
-        img = img / 255
-        return self.text_reader.predict(img)
+        if img is None:
+            return ''
+        img_pil = Image.fromarray(img)
+        return self.text_reader.predict(img_pil)
 
     def _concat(self, text1, text2, sep):
         if len(text1) == 0:
@@ -32,19 +25,78 @@ class FrontsideReader:
             return text1
         return sep.join([text1, text2])
 
-    def extract(self, img):
-        number = self._get_text(img[120:175, 390:700])
+    def _vertical_offset(self, img_bin):
+        intensity = np.mean(img_bin, axis=1)
+        intensity = gaussian_filter1d(intensity, sigma=5, mode='reflect')
         
-        name = self._get_text(img[170:220,340:])
+        mid = intensity.size // 2
+        top = np.argmin(intensity[:mid])
+        bot = np.argmin(intensity[:mid:-1])
+        return top, bot
 
-        dob = self._get_text(img[260:310,380:])
+    def _horizontal_intensity(self, img_bin):
+        intensity = np.mean(img_bin, axis=0)
+        intensity_gauss = gaussian_filter1d(intensity, sigma=25, mode='constant')
+        return intensity_gauss
 
-        origin1 = self._get_text(img[305:355, 420:])
-        origin2 = self._get_text(img[350:400, 250:])
+    def detect(self, img):
+        box = [
+            [170, 240, 340],
+            [215, 285, 290],
+            [255, 325, 380],
+            [295, 365, 420],
+            [345, 415, 250],
+            [385, 455, 515],
+            [425, 495, 250]
+        ]
+        
+        img_gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        img_bin = cv2.adaptiveThreshold(src=img_gray,
+                                        maxValue=255,
+                                        adaptiveMethod=cv2.ADAPTIVE_THRESH_MEAN_C,
+                                        thresholdType=cv2.THRESH_BINARY_INV,
+                                        blockSize=11,
+                                        C=20)
+
+        for i in range(7):
+            img_text_bin = img_bin[box[i][0]:box[i][1], box[i][2]:]
+            top, bot = self._vertical_offset(img_text_bin)
+            box[i][0] = box[i][0] + top
+            box[i][1] = box[i][1] - bot + 1
+            
+        intensity = [self._horizontal_intensity(img_bin[box[i][0]:box[i][1], box[i][2]:]) for i in range(7)]
+        max_intensity = [np.max(intensity[i]) for i in range(7)]
+        M = max(max_intensity)
+        is_empty = [max_intensity[i] < M/2 for i in range(7)]
+
+        img_text = [img[120:175, 390:700]]
+        for i in range(7):
+            if is_empty[i]:
+                img_text.append(None)
+            else:
+                text_idx = np.argwhere(intensity[i] >= max_intensity[i] / 2).squeeze()
+                left = max(0, np.min(text_idx - 20))
+                right = np.max(text_idx) + 21
+                img_text.append(img[box[i][0]:box[i][1], box[i][2]+left:box[i][2]+right])
+
+        return img_text
+
+    def extract(self, img):
+        img_text = self.detect(img)
+        number = self._get_text(img_text[0])
+        
+        name1 = self._get_text(img_text[1])
+        name2 = self._get_text(img_text[2])
+        name = self._concat(name1, name2, ' ')
+
+        dob = self._get_text(img_text[3])
+
+        origin1 = self._get_text(img_text[4])
+        origin2 = self._get_text(img_text[5])
         origin = self._concat(origin1, origin2, ', ')
 
-        address1 = self._get_text(img[395:445, 515:])
-        address2 = self._get_text(img[435:485, 250:])
+        address1 = self._get_text(img_text[6])
+        address2 = self._get_text(img_text[7])
         address = self._concat(address1, address2, ', ')
         
         output = {
@@ -58,14 +110,8 @@ class FrontsideReader:
 
 
 class BacksideReader:
-    def __init__(self):
-        config = Cfg.load_config_from_name('vgg_transformer')
-        config['weights'] = './transformerocr.pth'
-        config['cnn']['pretrained']=False
-        config['device'] = 'cpu'
-        config['predictor']['beamsearch']=False
-
-        self.text_reader = Predictor(config)
+    def __init__(self, ocrmodel):
+        self.text_reader = ocrmodel
 
     def _get_text(self, img):
         img_pil = Image.fromarray(img)
@@ -95,7 +141,6 @@ class BacksideReader:
                 "Tháng": int(date_issue[1]),
                 "Năm": int(date_issue[2])
             },
-            # "Ngày cấp": date_issue,
             "Nơi cấp": place_issue
         }
         
